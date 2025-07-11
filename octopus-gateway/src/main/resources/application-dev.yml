@@ -1,0 +1,21 @@
+config:
+  nacos:
+    host: ${NACOS_HOST:127.0.0.1}:18848
+    
+spring:
+  cloud:
+    nacos:
+      username: nacos
+      password: nacos
+      discovery:
+        server-addr: ${config.nacos.host}
+        namespace: live-test
+      config:
+        file-extension: yaml
+        server-addr: ${config.nacos.host}
+        namespace: live-test
+        group: DEFAULT_GROUP
+  config:
+    import: 
+      - optional:nacos:octopus-gateway-config.yaml
+      - optional:nacos:octopus-gateway-rate-limit-config.yaml

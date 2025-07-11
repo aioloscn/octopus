@@ -1,0 +1,30 @@
+services:
+  octopus-gateway-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: 'octopus-gateway-docker:latest'
+    environment:
+      - server.port=8700
+      - spring.cloud.nacos.discovery.ip=${DEV_HOST} # 不同物理机必须明确指定IP
+      - NACOS_HOST=${DEV_HOST}
+      - JAVA_OPTS=-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xms256m -Xmx256m -Xmn128m -Xss256k
+    ports:
+      - '8700:8700'
+    volumes:
+      - D:\tmp\logs\octopus-gateway-1:/tmp/logs/octopus-gateway
+  
+#  octopus-gateway-2:
+#    build:
+#      context: ..
+#      dockerfile: docker/Dockerfile
+#    image: 'octopus-gateway-docker:latest'
+#    environment:
+#      - server.port=8701
+#      - spring.cloud.nacos.discovery.ip=${DEV_HOST} # 不同物理机必须明确指定IP
+#      - NACOS_HOST=${DEV_HOST}
+#      - JAVA_OPTS=-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xms256m -Xmx256m -Xmn128m -Xss256k
+#    ports:
+#      - '8701:8701'
+#    volumes:
+#      - D:\tmp\logs\octopus-gateway-2:/tmp/logs/octopus-gateway
