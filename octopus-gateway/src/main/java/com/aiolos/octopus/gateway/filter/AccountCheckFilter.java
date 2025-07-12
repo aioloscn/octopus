@@ -13,6 +13,7 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.route.Route;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,8 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+
+import static org.springframework.cloud.gateway.support.ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR;
 
 @Slf4j
 @Component
@@ -44,16 +47,19 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 
+        Route route = exchange.getAttribute(GATEWAY_ROUTE_ATTR);
+
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-        if (path.contains("api-docs")) {
+        
+        if (route == null || path.contains("api-docs")) {
             return chain.filter(exchange);
         }
         if (StringUtils.isBlank(path)) {
             return Mono.empty();
         }
 
-        String serviceId = extractServiceId(path);
+        String serviceId = route.getUri().getHost();
         if (serviceId == null) {
             log.error("无法识别的服务路径: {}", path);
             exchange.getResponse().setStatusCode(HttpStatus.BAD_REQUEST);
@@ -61,7 +67,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         }
 
         List<String> anonymousUrls = null;
-        GatewayWhitelistProperties.ServiceConfig serviceConfig = gatewayWhitelistProperties.getServices().get(serviceId);
+        GatewayWhitelistProperties.ServiceConfig serviceConfig = gatewayWhitelistProperties.findServiceConfig(serviceId);
 
         if (serviceConfig != null) {
             for (String whitelistUrl : serviceConfig.getUrls()) {
@@ -107,16 +113,6 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             }
         }
         return chain.filter(exchange.mutate().request(builder.build()).build());
-    }
-
-    private String extractServiceId(String path) {
-        if (path.startsWith("/")) {
-            int secondSlash = path.indexOf('/', 1);
-            if (secondSlash > 0) {
-                return path.substring(1, secondSlash);
-            }
-        }
-        return null;
     }
 
     private String resolveToken(ServerWebExchange exchange) {

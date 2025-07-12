@@ -43,10 +43,10 @@
 #            - Path=/live-api/**
 #          filters:
 #            - StripPrefix=1
-#        - id: live-user-provider
-#          uri: lb://live-user-provider
+#        - id: badger-user-provider
+#          uri: lb://badger-user-provider
 #          predicates:
-#            - Path=/live-user-provider/**
+#            - Path=/badger-user-provider/**
 #          filters:
 #            - StripPrefix=1
 #        - id: live-im-provider
@@ -73,13 +73,19 @@
 #    check: false
 #
 #whitelist:
-#  live:
-#    urls:
-#      - /sms/send-sms
-#      - /user/login
-#      - /living-room/list
-#    anonymous-urls:
-#      - /im/get-im-config
+#  services:
+#    - id: live-api
+#      urls:
+#        - /sms/send-sms
+#        - /living-room/list
+#      anonymous-urls:
+#        - /living-room/anchor-config
+#    - id: live-im-provider
+#      anonymous-urls:
+#        - /im/get-im-config
+#    - id: badger-user-provider
+#      urls:
+#        - /user/login
 #
 #rate-limit:
 #  services:
