@@ -116,7 +116,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     }
 
     private String resolveToken(ServerWebExchange exchange) {
-        List<HttpCookie> tokens = exchange.getRequest().getCookies().get("live-token");
+        List<HttpCookie> tokens = exchange.getRequest().getCookies().get("vs-token");
         if (CollectionUtil.isNotEmpty(tokens) && StringUtils.isNotBlank(tokens.get(0).getValue())) {
             return tokens.get(0).getValue();
         }
@@ -144,7 +144,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                     .maxAge(Duration.ofDays(7)) // 如果有未登录加购功能，可以设置365
                     .httpOnly(true)
                     .secure(activeProfile.equalsIgnoreCase("prod")) // 仅https传输
-                    .domain("live.aiolos.com")
+                    .domain(".volleyshot.com")
                     .path("/")
                     .build();
             exchange.getResponse().getHeaders().set("Access-Control-Allow-Credentials", "true");

@@ -1,8 +1,8 @@
 services:
   octopus-gateway-1:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    build:  # 另一种写法，没有镜像通过jar包打包镜像并启动容器；maven插件二选一
+      context: .
+      dockerfile: Dockerfile
     image: 'octopus-gateway-docker:latest'
     environment:
       - server.port=8700

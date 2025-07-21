@@ -1,6 +1,6 @@
 package com.aiolos.octopus.gateway.filter;
 
-import com.aiolos.common.enums.errors.ErrorEnum;
+import com.aiolos.common.enums.error.ErrorEnum;
 import com.aiolos.common.model.response.CommonResponse;
 import com.aiolos.octopus.gateway.config.GatewayRateLimitProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;

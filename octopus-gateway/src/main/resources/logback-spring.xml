@@ -2,7 +2,7 @@
 <configuration>
     <springProperty name="APP_NAME" scope="context" source="spring.application.name" defaultValue="undefined"/>
     <!-- 用于生成一个标识，防止多个Docker容器映射到同一台宿主机上出现目录名重复问题-->
-    <define name="index" class="com.aiolos.common.utils.IpLogConversionRule"/>
+    <define name="index" class="com.aiolos.common.util.IpLogConversionRule"/>
     <!-- docker容器存储日志的路径 -->
     <property name="LOG_HOME" value="/tmp/logs/${APP_NAME}/${index}"/>
     <property name="LOG_PATTERN" value="[%d{yyyy-MM-dd HH:mm:ss.SSS} -%5p] %-40.40logger{39} :%msg%n"/>
