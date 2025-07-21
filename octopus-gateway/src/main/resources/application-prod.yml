@@ -19,3 +19,5 @@ spring:
     import: 
       - optional:nacos:octopus-gateway-config.yaml
       - optional:nacos:octopus-gateway-rate-limit-config.yaml
+        
+cookie-domain: .volleyshot.com

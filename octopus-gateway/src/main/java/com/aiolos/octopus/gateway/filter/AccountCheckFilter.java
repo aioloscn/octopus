@@ -43,6 +43,8 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     
     @Value("${spring.profiles.active}")
     private String activeProfile;
+    @Value("${cookie-domain}")
+    private String cookieDomain;
     
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -144,7 +146,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                     .maxAge(Duration.ofDays(7)) // 如果有未登录加购功能，可以设置365
                     .httpOnly(true)
                     .secure(activeProfile.equalsIgnoreCase("prod")) // 仅https传输
-                    .domain(".volleyshot.com")
+                    .domain(cookieDomain)
                     .path("/")
                     .build();
             exchange.getResponse().getHeaders().set("Access-Control-Allow-Credentials", "true");

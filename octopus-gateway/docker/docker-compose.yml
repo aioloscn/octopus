@@ -1,9 +1,9 @@
 services:
   octopus-gateway-1:
     build:  # 另一种写法，没有镜像通过jar包打包镜像并启动容器；maven插件二选一
-      context: .
-      dockerfile: Dockerfile
-    image: 'octopus-gateway-docker:latest'
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: 'octopus-gateway:latest'
     environment:
       - server.port=8700
       - spring.cloud.nacos.discovery.ip=${DEV_HOST} # 不同物理机必须明确指定IP
@@ -15,10 +15,7 @@ services:
       - D:\tmp\logs\octopus-gateway-1:/tmp/logs/octopus-gateway
   
 #  octopus-gateway-2:
-#    build:
-#      context: ..
-#      dockerfile: docker/Dockerfile
-#    image: 'octopus-gateway-docker:latest'
+#    image: 'octopus-gateway:latest'
 #    environment:
 #      - server.port=8701
 #      - spring.cloud.nacos.discovery.ip=${DEV_HOST} # 不同物理机必须明确指定IP
