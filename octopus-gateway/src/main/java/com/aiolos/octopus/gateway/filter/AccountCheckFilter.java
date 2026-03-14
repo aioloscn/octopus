@@ -22,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
@@ -53,6 +54,8 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     private String activeProfile;
     @Value("${cookie-domain}")
     private String cookieDomain;
+
+    private final AntPathMatcher antPathMatcher = new AntPathMatcher();
     
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -93,7 +96,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         if (serviceConfig != null) {
             if (CollectionUtil.isNotEmpty(serviceConfig.getUrls())) {
                 for (String whitelistUrl : serviceConfig.getUrls()) {
-                    if (path.contains(whitelistUrl)) {
+                    if (antPathMatcher.match(whitelistUrl, path)) {
                         // 不需要token校验，放行到下游服务
                         return chain.filter(exchange);
                     }
@@ -115,7 +118,12 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                 if (StringUtils.isNotBlank(whitelistStr)) {
                     String[] urls = whitelistStr.split(",");
                     for (String url : urls) {
-                        if (path.contains(url)) {
+                        if (antPathMatcher.match(url, path)) {
+                            return chain.filter(exchange);
+                        }
+                        // 兼容Nacos中配置的路径不带服务名的情况
+                        String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
+                        if (antPathMatcher.match(url, pathWithoutServiceId)) {
                             return chain.filter(exchange);
                         }
                     }
@@ -137,7 +145,12 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
 
         if (StringUtils.isNotBlank(token)) {
             // 根据token获取userId
-            accountDto = accountTokenApi.getUserByToken(token);
+            try {
+                accountDto = accountTokenApi.getUserByToken(token);
+            } catch (Exception e) {
+                // token无效或过期，视为未登录
+                log.warn("Token validation failed: {}", e.getMessage());
+            }
         }
 
         ServerHttpRequest.Builder builder = request.mutate();
@@ -153,17 +166,28 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "false");
         } else {
 
-            if (CollectionUtil.isNotEmpty(anonymousUrls) && anonymousUrls.stream().anyMatch(path::contains)) {
-                // 匿名用户处理
-                String deviceId = resolveDeviceId(exchange);
-                Long anonymousId = accountTokenApi.getOrCreateAnonymousId(deviceId);
-                builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), anonymousId.toString());
-                builder.header(GatewayHeaderEnum.DEVICE_ID.getHeaderName(), deviceId);
-                builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "true");
-            } else {
-                return Mono.empty();
+            if (CollectionUtil.isNotEmpty(anonymousUrls)) {
+                String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
+                for (String anonymousUrl : anonymousUrls) {
+                    if (antPathMatcher.match(anonymousUrl, path)) {
+                        return handleAnonymous(exchange, chain, builder);
+                    }
+                    if (antPathMatcher.match(anonymousUrl, pathWithoutServiceId)) {
+                        return handleAnonymous(exchange, chain, builder);
+                    }
+                }
             }
+            return Mono.empty();
         }
+        return chain.filter(exchange.mutate().request(builder.build()).build());
+    }
+
+    private Mono<Void> handleAnonymous(ServerWebExchange exchange, GatewayFilterChain chain, ServerHttpRequest.Builder builder) {
+        String deviceId = resolveDeviceId(exchange);
+        Long anonymousId = accountTokenApi.getOrCreateAnonymousId(deviceId);
+        builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), anonymousId.toString());
+        builder.header(GatewayHeaderEnum.DEVICE_ID.getHeaderName(), deviceId);
+        builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "true");
         return chain.filter(exchange.mutate().request(builder.build()).build());
     }
 
