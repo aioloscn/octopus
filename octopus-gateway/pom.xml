@@ -18,6 +18,10 @@
             <groupId>com.aiolos</groupId>
             <artifactId>common-utils</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.aiolos</groupId>
+            <artifactId>common-cloud</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.aiolos</groupId>

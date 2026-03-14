@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.cloud.gateway.route.Route;
@@ -25,8 +27,11 @@ import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.cloud.gateway.support.ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR;
@@ -40,6 +45,9 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     
     @Resource
     private GatewayWhitelistProperties gatewayWhitelistProperties;
+    
+    @Resource
+    private DiscoveryClient discoveryClient;
     
     @Value("${spring.profiles.active}")
     private String activeProfile;
@@ -68,17 +76,59 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             return exchange.getResponse().setComplete();
         }
 
-        List<String> anonymousUrls = null;
+        List<String> anonymousUrls = new ArrayList<>();
         GatewayWhitelistProperties.ServiceConfig serviceConfig = gatewayWhitelistProperties.findServiceConfig(serviceId);
 
+        /**
+         * 兜底方案，可以在octopus-gateway-config.yaml中添加
+         * whitelist:
+         *   services:
+         *     - id: live-living-provider
+         *       urls:
+         *         - /living-room/list
+         *       anonymous-urls:
+         *         - /living-room/anchor-config
+         * octopus会热更新白名单
+         */
         if (serviceConfig != null) {
-            for (String whitelistUrl : serviceConfig.getUrls()) {
-                if (path.contains(whitelistUrl)) {
-                    // 不需要token校验，放行到下游服务
-                    return chain.filter(exchange);
+            if (CollectionUtil.isNotEmpty(serviceConfig.getUrls())) {
+                for (String whitelistUrl : serviceConfig.getUrls()) {
+                    if (path.contains(whitelistUrl)) {
+                        // 不需要token校验，放行到下游服务
+                        return chain.filter(exchange);
+                    }
                 }
             }
-            anonymousUrls = serviceConfig.getAnonymousUrls();
+            if (CollectionUtil.isNotEmpty(serviceConfig.getAnonymousUrls())) {
+                anonymousUrls.addAll(serviceConfig.getAnonymousUrls());
+            }
+        }
+        
+        try {
+            // 从Nacos元数据获取动态白名单
+            List<ServiceInstance> instances = discoveryClient.getInstances(serviceId);
+            if (CollectionUtil.isNotEmpty(instances)) {
+                ServiceInstance instance = instances.get(0);
+                Map<String, String> metadata = instance.getMetadata();
+                
+                String whitelistStr = metadata.get("whitelist-urls");
+                if (StringUtils.isNotBlank(whitelistStr)) {
+                    String[] urls = whitelistStr.split(",");
+                    for (String url : urls) {
+                        if (path.contains(url)) {
+                            return chain.filter(exchange);
+                        }
+                    }
+                }
+                
+                String anonymousStr = metadata.get("anonymous-urls");
+                if (StringUtils.isNotBlank(anonymousStr)) {
+                    String[] urls = anonymousStr.split(",");
+                    Collections.addAll(anonymousUrls, urls);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch metadata from Nacos for service: {}", serviceId, e);
         }
 
         // 不在白名单的请求需要提取cookie做校验
@@ -103,7 +153,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "false");
         } else {
 
-            if (anonymousUrls != null && anonymousUrls.stream().anyMatch(path::contains)) {
+            if (CollectionUtil.isNotEmpty(anonymousUrls) && anonymousUrls.stream().anyMatch(path::contains)) {
                 // 匿名用户处理
                 String deviceId = resolveDeviceId(exchange);
                 Long anonymousId = accountTokenApi.getOrCreateAnonymousId(deviceId);
