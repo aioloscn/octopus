@@ -30,7 +30,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -82,57 +81,76 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         List<String> anonymousUrls = new ArrayList<>();
         GatewayWhitelistProperties.ServiceConfig serviceConfig = gatewayWhitelistProperties.findServiceConfig(serviceId);
 
-        /**
-         * 兜底方案，可以在octopus-gateway-config.yaml中添加
-         * whitelist:
-         *   services:
-         *     - id: live-living-provider
-         *       urls:
-         *         - /living-room/list
-         *       anonymous-urls:
-         *         - /living-room/anchor-config
-         * octopus会热更新白名单
+        /*
+          兜底方案，可以在octopus-gateway-config.yaml中添加
+          whitelist:
+            services:
+              - id: live-living-provider
+                urls:
+                  - /living-room/list
+                anonymous-urls:
+                  - /living-room/anchor-config
+          octopus会热更新白名单
          */
         if (serviceConfig != null) {
             if (CollectionUtil.isNotEmpty(serviceConfig.getUrls())) {
+                String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
                 for (String whitelistUrl : serviceConfig.getUrls()) {
                     if (antPathMatcher.match(whitelistUrl, path)) {
                         // 不需要token校验，放行到下游服务
                         return chain.filter(exchange);
                     }
+                    // 兼容配置的路径不带服务名的情况
+                    if (antPathMatcher.match(whitelistUrl, pathWithoutServiceId)) {
+                        return chain.filter(exchange);
+                    }
                 }
             }
             if (CollectionUtil.isNotEmpty(serviceConfig.getAnonymousUrls())) {
-                anonymousUrls.addAll(serviceConfig.getAnonymousUrls());
+                String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
+                for (String anonymousUrl : serviceConfig.getAnonymousUrls()) {
+                    if (antPathMatcher.match(anonymousUrl, path)) {
+                        anonymousUrls.add(anonymousUrl);
+                    }
+                    if (antPathMatcher.match(anonymousUrl, pathWithoutServiceId)) {
+                        anonymousUrls.add(anonymousUrl);
+                    }
+                }
             }
         }
         
         try {
-            // 从Nacos元数据获取动态白名单
+            // 从Nacos元数据获取动态白名单（合并所有实例的配置，防止灰度发布期间配置不一致）
             List<ServiceInstance> instances = discoveryClient.getInstances(serviceId);
             if (CollectionUtil.isNotEmpty(instances)) {
-                ServiceInstance instance = instances.get(0);
-                Map<String, String> metadata = instance.getMetadata();
-                
-                String whitelistStr = metadata.get("whitelist-urls");
-                if (StringUtils.isNotBlank(whitelistStr)) {
-                    String[] urls = whitelistStr.split(",");
-                    for (String url : urls) {
-                        if (antPathMatcher.match(url, path)) {
-                            return chain.filter(exchange);
-                        }
-                        // 兼容Nacos中配置的路径不带服务名的情况
-                        String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
-                        if (antPathMatcher.match(url, pathWithoutServiceId)) {
-                            return chain.filter(exchange);
+                String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
+                for (ServiceInstance instance : instances) {
+                    Map<String, String> metadata = instance.getMetadata();
+                    if (metadata == null) continue;
+                    
+                    String whitelistStr = metadata.get("whitelist-urls");
+                    if (StringUtils.isNotBlank(whitelistStr)) {
+                        String[] urls = whitelistStr.split(",");
+                        for (String url : urls) {
+                            if (antPathMatcher.match(url, path)) {
+                                return chain.filter(exchange);
+                            }
+                            // 兼容Nacos中配置的路径不带服务名的情况
+                            if (antPathMatcher.match(url, pathWithoutServiceId)) {
+                                return chain.filter(exchange);
+                            }
                         }
                     }
-                }
-                
-                String anonymousStr = metadata.get("anonymous-urls");
-                if (StringUtils.isNotBlank(anonymousStr)) {
-                    String[] urls = anonymousStr.split(",");
-                    Collections.addAll(anonymousUrls, urls);
+                    
+                    String anonymousStr = metadata.get("anonymous-urls");
+                    if (StringUtils.isNotBlank(anonymousStr)) {
+                        String[] urls = anonymousStr.split(",");
+                        for (String url : urls) {
+                            if (!anonymousUrls.contains(url)) {
+                                anonymousUrls.add(url);
+                            }
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
