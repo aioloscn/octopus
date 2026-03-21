@@ -12,6 +12,7 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -105,29 +106,10 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     }
 
     private RedisScript<Long> createRateLimitScript() {
-        String script =
-                "local key = KEYS[1] " +
-                "local maxRequests = tonumber(ARGV[1]) " +
-                "local timeWindow = tonumber(ARGV[2]) " +
-                "local banTime = tonumber(ARGV[3]) " +
-                "local limitKey = key .. ':lock' " +
-                "local counterKey = key .. ':counter' " +
-                "if redis.call('EXISTS', limitKey) == 1 then " +
-                "    return 1 " +
-                "end " +
-                " " +
-                "local count = redis.call('INCR', counterKey) " +
-                "if count == 1 then " +
-                "    redis.call('EXPIRE', counterKey, timeWindow) " +
-                "end " +
-                " " +
-                "if count > maxRequests then " +
-                "    redis.call('SETEX', limitKey, banTime, '1') " +
-                "    redis.call('DEL', counterKey) " +
-                "    return 1 " +
-                "end " +
-                "return 0";
-        return new DefaultRedisScript<>(script, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/rate_limit.lua"));
+        script.setResultType(Long.class);
+        return script;
     }
 
     @Override

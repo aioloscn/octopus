@@ -82,3 +82,16 @@
 #      urls:
 #        - /category
 #        - /shop
+#
+# rate-limit:
+#   services:
+#     - id: live-im-provider
+#       default-config:
+#         max-requests: 20
+#         time-window: 10
+#         ban-time: 60
+#       interfaces:
+#         - path: /im/get-im-config
+#           max-requests: 2
+#           time-window: 10
+#           ban-time: 60

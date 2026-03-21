@@ -195,7 +195,9 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                     }
                 }
             }
-            return Mono.empty();
+            log.warn("Request intercepted due to lack of authentication, path: {}", path);
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
         }
         return chain.filter(exchange.mutate().request(builder.build()).build());
     }
