@@ -5,7 +5,9 @@ import com.aiolos.badger.identitycore.api.AccountTokenApi;
 import com.aiolos.badger.identitycore.dto.AccountDTO;
 import com.aiolos.common.enums.GatewayHeaderEnum;
 import com.aiolos.octopus.gateway.config.GatewayWhitelistProperties;
+import com.aiolos.octopus.gateway.util.JwtUtil;
 import com.alibaba.fastjson2.JSON;
+import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -40,7 +42,7 @@ import static org.springframework.cloud.gateway.support.ServerWebExchangeUtils.G
 @Component
 public class AccountCheckFilter implements GlobalFilter, Ordered {
 
-    @DubboReference
+    @DubboReference(check = false)
     private AccountTokenApi accountTokenApi;
     
     @Resource
@@ -159,28 +161,44 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
 
         // 不在白名单的请求需要提取cookie做校验
         String token = resolveToken(exchange);
-        AccountDTO accountDto = null;
+        Long userId = null;
 
         if (StringUtils.isNotBlank(token)) {
-            // 根据token获取userId
             try {
-                accountDto = accountTokenApi.getUserByToken(token);
+                // 优先使用 JWT 本地解析
+                String subject = JwtUtil.getSubjectFromToken(token);
+                userId = Long.parseLong(subject);
+            } catch (ExpiredJwtException e) {
+                // 关键修改：捕获过期异常
+                log.warn("JWT is expired. Token: {}, Error: {}", token, e.getMessage());
+                // 不降级调用 RPC，让 userId 保持为 null
             } catch (Exception e) {
-                // token无效或过期，视为未登录
-                log.warn("Token validation failed: {}", e.getMessage());
+                log.warn("JWT validation failed, fallback to RPC: {}", e.getMessage());
+                // 如果是其他类型的异常（如签名错误等），可以尝试回退 RPC
+                try {
+                    AccountDTO accountDto = accountTokenApi.getUserByToken(token);
+                    if (accountDto != null && accountDto.getUserId() != null) {
+                        userId = accountDto.getUserId();
+                    }
+                } catch (Exception rpcException) {
+                    log.warn("RPC Token validation failed: {}", rpcException.getMessage());
+                }
+            }
+            
+            // 关键修复：如果传了 token，但经过 JWT 和 RPC 校验后 userId 依然为空，说明 token 是伪造的或已过期。
+            // 此时我们不直接拦截返回 401，而是记录日志，让它以“未登录”的身份继续走下面的匿名判断逻辑。
+            // 这样如果是允许匿名的接口（如加购物车），它依然可以获得匿名 ID 正常工作；如果是不允许匿名的接口，会在下面统一拦截。
+            if (userId == null) {
+                log.warn("Invalid token provided, degrading to anonymous request. Path: {}", path);
             }
         }
 
         ServerHttpRequest.Builder builder = request.mutate();
         
-        if (accountDto != null && accountDto.getUserId() != null) {
+        if (userId != null) {
 
             // 将用户信息放入请求头，下游服务可以从请求头中获取，再放入ContextInfo中
-            builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), accountDto.getUserId().toString());
-
-            String userJson = JSON.toJSONString(accountDto);
-            String encodedJson = Base64.getEncoder().encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
-            builder.header(GatewayHeaderEnum.USER_INFO_JSON.getHeaderName(), encodedJson);
+            builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), userId.toString());
             builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "false");
         } else {
 
@@ -212,9 +230,10 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
     }
 
     private String resolveToken(ServerWebExchange exchange) {
-        List<HttpCookie> tokens = exchange.getRequest().getCookies().get("vs-token");
-        if (CollectionUtil.isNotEmpty(tokens) && StringUtils.isNotBlank(tokens.get(0).getValue())) {
-            return tokens.get(0).getValue();
+        // 直接从 Header 获取 Authorization: Bearer <token>
+        String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
+        if (StringUtils.isNotBlank(authHeader) && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
         }
         return null;
     }

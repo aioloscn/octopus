@@ -4,6 +4,7 @@ import com.aiolos.common.model.response.CommonResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
 import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
@@ -52,7 +53,7 @@ public class TokenBucketRateLimitFilter implements GlobalFilter, Ordered {
         byte[] bucketKey = bucketKeyStr.getBytes();
         
         // 使用 Bucket4j 代理管理器获取 Bucket
-        io.github.bucket4j.Bucket bucket = proxyManager.builder().build(bucketKey, this::createBucketConfig);
+        Bucket bucket = proxyManager.builder().build(bucketKey, this::createBucketConfig);
         
         // 尝试消费1个令牌
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
@@ -89,7 +90,7 @@ public class TokenBucketRateLimitFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 2;
+        return Ordered.HIGHEST_PRECEDENCE + 3;
     }
 }
 

@@ -72,16 +72,6 @@
 #    - id: live-im-provider
 #      anonymous-urls:
 #        - /im/get-im-config
-#    - id: badger-user-provider
-#      urls:
-#        - /user/login
-#    - id: badger-sms-provider
-#      urls:
-#        - /sms/send-sms
-#    - id: plaza-home
-#      urls:
-#        - /category
-#        - /shop
 #
 # rate-limit:
 #   services:
