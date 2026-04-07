@@ -9,6 +9,7 @@
 #              - "http://127.0.0.1:*"
 #              - "http://localhost:*"
 #              - "http://*.aiolos.com:*"
+#              - "https://*.aiolos.com"
 #              - "https://*.volleyshot.com:*"
 #            allowed-methods:
 #              - GET

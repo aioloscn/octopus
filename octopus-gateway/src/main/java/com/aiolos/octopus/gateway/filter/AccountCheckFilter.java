@@ -6,7 +6,6 @@ import com.aiolos.badger.identitycore.dto.AccountDTO;
 import com.aiolos.common.enums.GatewayHeaderEnum;
 import com.aiolos.octopus.gateway.config.GatewayWhitelistProperties;
 import com.aiolos.octopus.gateway.util.JwtUtil;
-import com.alibaba.fastjson2.JSON;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,10 +27,8 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,7 +39,7 @@ import static org.springframework.cloud.gateway.support.ServerWebExchangeUtils.G
 @Component
 public class AccountCheckFilter implements GlobalFilter, Ordered {
 
-    @DubboReference(check = false)
+    @DubboReference
     private AccountTokenApi accountTokenApi;
     
     @Resource
@@ -225,6 +222,8 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         Long anonymousId = accountTokenApi.getOrCreateAnonymousId(deviceId);
         builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), anonymousId.toString());
         builder.header(GatewayHeaderEnum.DEVICE_ID.getHeaderName(), deviceId);
+        builder.header("device-id", deviceId);
+        builder.header("X-Device-ID", deviceId);
         builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "true");
         return chain.filter(exchange.mutate().request(builder.build()).build());
     }
@@ -247,6 +246,13 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         }
 
         if (StringUtils.isBlank(deviceId)) {
+            List<String> plainDeviceHeaders = request.getHeaders().get("device-id");
+            if (CollectionUtil.isNotEmpty(plainDeviceHeaders)) {
+                deviceId = plainDeviceHeaders.get(0);
+            }
+        }
+
+        if (StringUtils.isBlank(deviceId)) {
             HttpCookie deviceCookie = request.getCookies().getFirst("device-id");
             if (deviceCookie != null) {
                 deviceId = deviceCookie.getValue();
@@ -255,17 +261,39 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
 
         if (StringUtils.isBlank(deviceId)) {
             deviceId = UUID.randomUUID().toString().replace("-", "");
-            ResponseCookie deviceCookie = ResponseCookie.from("device-id", deviceId)
+            ResponseCookie.ResponseCookieBuilder cookieBuilder = ResponseCookie.from("device-id", deviceId)
                     .maxAge(Duration.ofDays(7)) // 如果有未登录加购功能，可以设置365
                     .httpOnly(true)
                     .secure(activeProfile.equalsIgnoreCase("prod")) // 仅https传输
-                    .domain(cookieDomain)
-                    .path("/")
-                    .build();
+                    .path("/");
+            // 关键保护：只有 cookie-domain 与当前请求主机匹配时才下发 Domain，避免出现 Domain=localhost 导致浏览器不回传 cookie
+            String requestHost = request.getHeaders().getFirst("Host");
+            if (shouldSetCookieDomain(requestHost)) {
+                cookieBuilder.domain(cookieDomain);
+            }
+            ResponseCookie deviceCookie = cookieBuilder.build();
             exchange.getResponse().getHeaders().set("Access-Control-Allow-Credentials", "true");
             exchange.getResponse().addCookie(deviceCookie);
         }
         return deviceId;
+    }
+
+    private boolean shouldSetCookieDomain(String requestHost) {
+        if (StringUtils.isBlank(cookieDomain)) {
+            return false;
+        }
+        String normalizedDomain = StringUtils.removeStart(cookieDomain.toLowerCase(), ".");
+        String normalizedHost = StringUtils.defaultString(requestHost).toLowerCase();
+        int separatorIndex = normalizedHost.indexOf(":");
+        if (separatorIndex >= 0) {
+            normalizedHost = normalizedHost.substring(0, separatorIndex);
+        }
+        if ("localhost".equals(normalizedDomain)) {
+            return "localhost".equals(normalizedHost);
+        }
+        return StringUtils.isBlank(normalizedHost)
+                || normalizedHost.equals(normalizedDomain)
+                || normalizedHost.endsWith("." + normalizedDomain);
     }
 
     @Override

@@ -1,7 +1,9 @@
 package com.aiolos.octopus.gateway.config;
 
 import com.google.common.collect.Lists;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
@@ -9,7 +11,8 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 /**
  * 推荐配置在yaml里
  */
-//@Configuration
+@Configuration
+@ConditionalOnProperty(prefix = "gateway.cors", name = "code-config-enabled", havingValue = "true")
 public class CorsConfig {
 
     /**
@@ -23,7 +26,10 @@ public class CorsConfig {
         config.setAllowedOriginPatterns(Lists.newArrayList(
                 "http://127.0.0.1:*",
                 "http://localhost:*",
-                "http://*.aiolos.com"
+                "https://127.0.0.1:*",
+                "https://localhost:*",
+                "http://*.aiolos.com",
+                "https://*.aiolos.com"
         ));
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");

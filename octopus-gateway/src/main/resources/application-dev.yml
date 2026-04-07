@@ -2,6 +2,9 @@ config:
   nacos:
     host: ${NACOS_HOST:127.0.0.1}:18848
     
+server:
+  forward-headers-strategy: framework
+
 spring:
   cloud:
     nacos:
