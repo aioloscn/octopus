@@ -29,3 +29,14 @@ spring:
       database: 0
 
 cookie-domain: .aiolos.com
+
+# 灰度发布配置统一由 Apollo 管理
+# 建议在 Apollo 的 application 命名空间配置以下键
+# gateway.es.gray.enabled
+# gateway.es.gray.user-ids
+# gateway.es.gray.percent
+# gateway.es.gray.match.service-ids
+# gateway.es.gray.match.path-patterns
+# gateway.es.gray.instance-tag
+# gateway.es.gray.instance-meta-key
+# gateway.es.gray.force-gray-by-instance-tag

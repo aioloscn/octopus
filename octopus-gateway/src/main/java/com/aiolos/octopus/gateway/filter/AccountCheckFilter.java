@@ -78,6 +78,7 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
         }
 
         List<String> anonymousUrls = new ArrayList<>();
+        boolean whitelistMatched = false;
         GatewayWhitelistProperties.ServiceConfig serviceConfig = gatewayWhitelistProperties.findServiceConfig(serviceId);
 
         /*
@@ -96,12 +97,13 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                 String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
                 for (String whitelistUrl : serviceConfig.getUrls()) {
                     if (antPathMatcher.match(whitelistUrl, path)) {
-                        // 不需要token校验，放行到下游服务
-                        return chain.filter(exchange);
+                        whitelistMatched = true;
+                        break;
                     }
                     // 兼容配置的路径不带服务名的情况
                     if (antPathMatcher.match(whitelistUrl, pathWithoutServiceId)) {
-                        return chain.filter(exchange);
+                        whitelistMatched = true;
+                        break;
                     }
                 }
             }
@@ -132,12 +134,17 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
                         String[] urls = whitelistStr.split(",");
                         for (String url : urls) {
                             if (antPathMatcher.match(url, path)) {
-                                return chain.filter(exchange);
+                                whitelistMatched = true;
+                                break;
                             }
                             // 兼容Nacos中配置的路径不带服务名的情况
                             if (antPathMatcher.match(url, pathWithoutServiceId)) {
-                                return chain.filter(exchange);
+                                whitelistMatched = true;
+                                break;
                             }
+                        }
+                        if (whitelistMatched) {
+                            break;
                         }
                     }
                     
@@ -197,7 +204,11 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             // 将用户信息放入请求头，下游服务可以从请求头中获取，再放入ContextInfo中
             builder.header(GatewayHeaderEnum.USER_LOGIN_ID.getHeaderName(), userId.toString());
             builder.header(GatewayHeaderEnum.IS_ANONYMOUS.getHeaderName(), "false");
+            return chain.filter(exchange.mutate().request(builder.build()).build());
         } else {
+            if (whitelistMatched) {
+                return chain.filter(exchange);
+            }
 
             if (CollectionUtil.isNotEmpty(anonymousUrls)) {
                 String pathWithoutServiceId = path.replaceFirst("/" + serviceId, "");
@@ -214,7 +225,6 @@ public class AccountCheckFilter implements GlobalFilter, Ordered {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
-        return chain.filter(exchange.mutate().request(builder.build()).build());
     }
 
     private Mono<Void> handleAnonymous(ServerWebExchange exchange, GatewayFilterChain chain, ServerHttpRequest.Builder builder) {
